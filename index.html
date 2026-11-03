@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0b0f14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Desk">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com https://raw.githubusercontent.com; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Desk</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header id="top">
+  <div class="brand"><span class="logo">◆</span> Desk <span id="mode" class="badge">…</span></div>
+  <div id="age" class="age"></div>
+</header>
+<main id="view"><div class="center muted">Loading…</div></main>
+<nav id="tabs" hidden>
+  <button data-tab="desk" class="on"><span>◉</span>Desk</button>
+  <button data-tab="positions"><span>▤</span>Positions</button>
+  <button data-tab="trades"><span>↕</span>Trades</button>
+  <button data-tab="feed"><span>≋</span>Feed</button>
+  <button data-tab="settings"><span>⚙</span>Settings</button>
+</nav>
+<script src="config.js"></script>
+<script src="crypto.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
