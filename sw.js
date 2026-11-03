@@ -1,5 +1,5 @@
 /* Desk service worker: app-shell cache + web push. Holds no key and no trade data. */
-const SHELL = "desk-shell-v1";
+const SHELL = "desk-shell-v2";
 const FILES = ["./", "index.html", "styles.css", "app.js", "crypto.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-180.png"];
 
 self.addEventListener("install", (e) => {

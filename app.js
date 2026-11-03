@@ -174,7 +174,7 @@ function viewSettings(s) {
   <section class="card"><h3>Agents</h3><div class="row wrap gap">${agents}</div></section>
   ${rows}
   <section class="card"><h3>FOMO</h3><div class="row wrap gap"><a class="btn sm ghost" href="${esc(s.links.profile)}" target="_blank" rel="noopener">My FOMO profile</a><a class="btn sm ghost" href="${esc(s.links.signup)}" target="_blank" rel="noopener">Invite link</a></div></section>
-  <section class="card"><h3>This phone</h3><div class="row wrap gap"><button class="btn sm ghost" id="notif">Enable notifications</button><button class="btn sm danger" id="forget">Forget key</button></div></section>`;
+  <section class="card"><h3>This phone</h3><div class="row wrap gap"><button class="btn sm ghost" id="notif">Enable notifications</button><button class="btn sm danger" id="forget">Forget key</button></div><p class="muted small" id="diag">Checking this phone…</p></section>`;
 }
 function renderNoKey() {
   $("#tabs").hidden = true; $("#mode").textContent = "locked"; $("#age").textContent = "";
@@ -209,40 +209,69 @@ function render() {
 }
 function bind() {
   const n = document.querySelectorAll("#notif"); n.forEach((b) => (b.onclick = enableNotifications));
+  showDiag();
   const f = $("#forget"); if (f) f.onclick = () => { if (confirm("Remove the key from this phone?")) { localStorage.removeItem(KEY_LS); STATE = null; history.replaceState(null, "", location.pathname); renderNoKey(); } };
 }
 
 // ---------- notifications (iOS 16.4+: only from the Home Screen app) ----------
 const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-async function enableNotifications() {
-  const box = document.createElement("section"); box.className = "card notice";
-  const show = (html) => { box.innerHTML = html; $("#view").prepend(box); window.scrollTo(0, 0); };
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !standalone()) {
-    return show(`<h3>Add Desk to your Home Screen first</h3><p class="muted">iPhone only allows notifications for web apps opened from the Home Screen: in Safari tap Share → Add to Home Screen, then open Desk from there and tap this again.</p>`);
-  }
+const ERR_LS = "desk_push_err_v1";
+function swRegister() {
+  if (!("serviceWorker" in navigator) || location.protocol !== "https:") return Promise.resolve(null);
+  return navigator.serviceWorker.register("sw.js", { scope: "./" }).catch((e) => { localStorage.setItem(ERR_LS, "SW: " + (e && e.message || e)); return null; });
+}
+async function diagText() {
+  const parts = [];
+  parts.push("Home Screen app: " + (standalone() ? "yes" : "no"));
+  parts.push("permission: " + (("Notification" in window) ? Notification.permission : "unsupported"));
+  let sw = "none", sub = "no";
   try {
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") return show(`<h3>Notifications are blocked</h3><p class="muted">Settings → Notifications → Desk → Allow Notifications, then try again.</p>`);
-    const reg = await navigator.serviceWorker.ready;
+    const reg = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg) {
+      sw = reg.active ? reg.active.state : reg.installing ? "installing" : reg.waiting ? "waiting" : "registered";
+      if ("PushManager" in window && reg.pushManager) sub = (await reg.pushManager.getSubscription()) ? "yes" : "no";
+    }
+  } catch (e) { sw = "error " + (e && e.message || e); }
+  parts.push("service worker: " + sw, "subscribed: " + sub, "push support: " + ("PushManager" in window ? "yes" : "no"));
+  const err = localStorage.getItem(ERR_LS); if (err) parts.push("last error: " + err);
+  return parts.join(" · ");
+}
+async function showDiag() { const d = $("#diag"); if (d) d.textContent = await diagText(); }
+function enableNotifications() {
+  const box = document.createElement("section"); box.className = "card notice";
+  const show = (html) => { box.innerHTML = html; const v = $("#view"); const old = v.querySelector(".notice"); if (old) old.remove(); v.prepend(box); window.scrollTo(0, 0); showDiag(); };
+  const fail = (e) => { const m = (e && (e.name ? e.name + ": " : "") + (e.message || e)) || String(e); localStorage.setItem(ERR_LS, m);
+    show(`<h3>Couldn't turn on notifications</h3><p class="muted">${esc(m)}</p><p class="muted small" id="diag"></p>`); };
+  if (!standalone()) {
+    return show(`<h3>Open Desk from your Home Screen icon</h3><p class="muted">iPhone only allows notifications in the Home Screen app, not in Safari or inside Telegram. In Safari tap Share → Add to Home Screen, then open the Desk icon and tap Enable notifications there.</p><p class="muted small" id="diag"></p>`);
+  }
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return show(`<h3>This iPhone can't do web notifications</h3><p class="muted">It needs iOS 16.4 or newer. Settings → General → Software Update.</p><p class="muted small" id="diag"></p>`);
+  }
+  // iOS: requestPermission must be the first thing in the tap handler (no await before it).
+  Notification.requestPermission().then(async (perm) => {
+    if (perm !== "granted") { localStorage.setItem(ERR_LS, "permission " + perm);
+      return show(`<h3>Notifications are blocked</h3><p class="muted">iPhone Settings → Notifications → Desk → Allow Notifications, then tap Enable notifications again.</p><p class="muted small" id="diag"></p>`); }
+    await swRegister();
+    const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, rj) => setTimeout(() => rj(new Error("service worker not ready after 10s")), 10000))]);
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(STATE.vapid_public) });
     const j = sub.toJSON();
     const code = await encryptCompact({ endpoint: j.endpoint, keys: j.keys, device: (navigator.platform || "phone") }, getKey());
     const text = "websub " + code;
+    localStorage.removeItem(ERR_LS);
     show(`<h3>One more tap</h3><p class="muted">Telegram is opening with a message for your desk. Tap <b>Send</b>. The desk replies and sends a test notification.</p>
       <a class="btn" href="${tg(text)}">Open Telegram</a>
-      <details><summary class="muted small">Telegram didn't open?</summary><p class="muted small">Copy this and send it to @${esc(STATE.bot)}:</p><textarea readonly rows="4">${esc(text)}</textarea><button class="btn sm ghost" id="cp">Copy</button></details>`);
+      <details><summary class="muted small">Telegram didn't open?</summary><p class="muted small">Copy this and send it to @${esc(STATE.bot)}:</p><textarea readonly rows="4">${esc(text)}</textarea><button class="btn sm ghost" id="cp">Copy</button></details><p class="muted small" id="diag"></p>`);
     const cp = $("#cp"); if (cp) cp.onclick = () => navigator.clipboard.writeText(text).then(() => (cp.textContent = "Copied"));
     location.href = tg(text);
-  } catch (e) {
-    show(`<h3>Couldn't turn on notifications</h3><p class="muted">${esc(e && e.message || e)}</p>`);
-  }
+  }).catch(fail);
 }
 
 // ---------- boot ----------
 document.querySelectorAll("#tabs button").forEach((b) => (b.onclick = () => { TAB = b.dataset.tab; render(); window.scrollTo(0, 0); }));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
-if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {});
+swRegister();
 if (CFG.tab) TAB = CFG.tab;
 const t = /[#&]tab=(\w+)/.exec(location.hash); if (t) TAB = t[1];
 refresh(true);
